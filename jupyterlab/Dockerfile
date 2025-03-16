@@ -16,7 +16,8 @@ RUN apt-get update --yes && \
 
 USER ${NB_UID}
 
-RUN mamba install --yes \
+RUN mamba update --all -y && \
+    mamba install --yes \
     'black' \
     'conda-pack' \
     'jupyter-lsp' \
