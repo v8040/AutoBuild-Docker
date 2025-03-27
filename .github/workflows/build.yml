@@ -48,7 +48,7 @@ jobs:
 
     - name: Prepare project resources
       id: res
-      if: ${{ inputs.project != 'jupyterhub' }} 
+      if: ${{ inputs.project != 'jupyterhub' }}
       working-directory: ${{ inputs.project }}
       run: |
           case "${{ inputs.project }}" in

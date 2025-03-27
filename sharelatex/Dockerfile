@@ -10,9 +10,7 @@ RUN apt-get update --yes && \
 
 RUN curl -fsSLO https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh && \
     sh update-tlmgr-latest.sh -- --upgrade && \
-    tlmgr option autobackup 0 && \
-    tlmgr option docfiles 0 && \
-    tlmgr option srcfiles 0 && \
+    tlmgr option repository https://mirror.ctan.org/systems/texlive/tlnet && \
     tlmgr update --self --all && \
     tlmgr install scheme-full
 
