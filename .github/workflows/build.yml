@@ -1,0 +1,86 @@
+name: Docker Build and Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Select the project"
+        required: false
+        default: "jupyterhub"
+        type: choice
+        options:
+          - jupyterhub
+          - jupyterlab
+          - sharelatex
+
+permissions:
+    packages: write
+    contents: read
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@master
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@master
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@master
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Login to GHCR
+      uses: docker/login-action@master
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Prepare project resources
+      id: res
+      if: ${{ inputs.project != 'jupyterhub' }}
+      working-directory: ${{ inputs.project }}
+      run: |
+          case "${{ inputs.project }}" in
+              "jupyterlab")
+                  git clone -q --depth=1 https://github.com/ohmybash/oh-my-bash.git opt/oh-my-bash
+                  git clone -q --depth=1 https://github.com/ohmyzsh/ohmyzsh.git opt/oh-my-zsh
+                  git clone -q --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git opt/oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+                  git clone -q --depth=1 https://github.com/zsh-users/zsh-autosuggestions.git opt/oh-my-zsh/custom/plugins/zsh-autosuggestions
+                  curl -fsSL "${{ secrets.URL_JOVYAN }}" | tar -xJf - -C .
+                  ;;
+              "sharelatex")
+                  curl -fsSL "${{ secrets.URL_FONTS }}" | tar -xJf - -C .
+                  ;;
+          esac
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@master
+      with:
+        images: |
+          docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.project }}
+          ghcr.io/${{ github.repository_owner }}/${{ inputs.project }}
+        tags: |
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      id: build-push
+      uses: docker/build-push-action@master
+      with:
+        context: ${{ inputs.project }}
+        file: ${{ inputs.project }}/Dockerfile
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
