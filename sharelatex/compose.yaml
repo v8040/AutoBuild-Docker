@@ -1,0 +1,51 @@
+services:
+  sharelatex_overleaf:
+    container_name: sharelatex_overleaf
+    image: v8040/sharelatex:latest
+    ports:
+      - '80:80'
+    environment:
+      - TZ=Asia/Shanghai
+      - OVERLEAF_MONGO_URL=mongodb://mongo_overleaf/sharelatex?replicaSet=overleaf
+      - OVERLEAF_REDIS_HOST=valkey_overleaf
+      - REDIS_HOST=valkey_overleaf
+      - EMAIL_CONFIRMATION_DISABLED=true
+      - ENABLE_CONVERSIONS=true
+      - ENABLED_LINKED_FILE_TYPES=project_file,project_output_file
+      - OVERLEAF_APP_NAME=Overleaf
+      - OVERLEAF_NAV_TITLE=Overleaf
+      - OVERLEAF_SITE_LANGUAGE=zh-CN
+      - OVERLEAF_SECRET_KEY=
+      - OVERLEAF_SESSION_SECRET=
+      - OVERLEAF_SITE_URL=
+    volumes:
+      - ./sharelatex:/var/lib/overleaf
+    depends_on:
+      mongo_overleaf:
+        condition: service_healthy
+      valkey_overleaf:
+         condition: service_started
+
+  mongo_overleaf:
+    container_name: mongo_overleaf
+    image: mongo:latest
+    environment:
+      - TZ=Asia/Shanghai
+      - MONGO_INITDB_DATABASE=sharelatex
+    volumes:
+      - ./mongo:/data/db
+    command: ['mongod', '--bind_ip_all', '--replSet', 'overleaf']
+    healthcheck:
+      test: echo 'try { rs.status() } catch (e) { rs.initiate({_id:"overleaf", members:[{_id:0, host:"mongo_overleaf:27017"}]}) }' | mongosh --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  valkey_overleaf:
+    container_name: valkey_overleaf
+    image: valkey/valkey:alpine
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./valkey:/data
+    command: valkey-server --save 30 1 --loglevel warning
