@@ -15,6 +15,7 @@ on:
 
 jobs:
   Build:
+    name: 'Build for ${{ inputs.project }}'
     if: github.event.repository.owner.id == github.event.sender.id
     runs-on: ubuntu-latest
 

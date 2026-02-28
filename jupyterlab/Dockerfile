@@ -20,15 +20,19 @@ RUN mamba update -aqy && \
     'bash-language-server' \
     'code-server' \
     'conda-pack' \
+    'jupyter-archive' \
     'jupyter-resource-usage' \
     'jupyter-vscode-proxy' \
     'jupyterlab-git' \
     'jupyterlab-language-pack-zh-cn' \
     'jupyterlab-lsp' \
+    'jupyterlab-unfold' \
     'jupyterlab-variableinspector' \
     'jupyterlab_code_formatter' \
     'jupyterlab_execute_time' \
+    'jupytext' \
     'nb_conda_kernels' \
+    'nbdime' \
     'pipx' \
     'python-lsp-server' \
     'r-formatR' \
