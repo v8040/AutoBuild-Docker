@@ -78,6 +78,7 @@ jobs:
         labels: ${{ env.DOCKER_METADATA_OUTPUT_LABELS }}
 
     - name: 'Delete releases and workflows runs'
+      if: always()
       uses: ophub/delete-releases-workflows@main
       with:
         delete_releases: false

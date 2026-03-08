@@ -1,0 +1,81 @@
+name: 'Mirror Images to TCR'
+
+on:
+  workflow_dispatch:
+
+env:
+  IMAGE_LIST_FILE: 'images.txt'
+  TCR_REGISTRY: 'ccr.ccs.tencentyun.com'
+
+jobs:
+  Sync:
+    name: 'Sync Images from File'
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 'Checkout'
+      uses: actions/checkout@main
+
+    - name: 'Login to Docker Hub'
+      uses: docker/login-action@master
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: 'Login to GHCR'
+      uses: docker/login-action@master
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 'Login to Tencent Cloud TCR'
+      uses: docker/login-action@master
+      with:
+        registry: ${{ env.TCR_REGISTRY }}
+        username: ${{ secrets.TCR_USERNAME }}
+        password: ${{ secrets.TCR_TOKEN }}
+
+    - name: 'Parse File and Sync via Skopeo'
+      env:
+        FILE_PATH: ${{ env.IMAGE_LIST_FILE }}
+        TARGET_REGISTRY: ${{ env.TCR_REGISTRY }}
+        TARGET_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
+      run: |
+        if [ ! -f "${FILE_PATH}" ]; then
+          exit 1
+        fi
+        while IFS= read -r LINE || [[ -n "${LINE}" ]]; do
+          LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+          LINE="${LINE%"${LINE##*[![:space:]]}"}"
+          if [[ -z "${LINE}" ]] || [[ "${LINE}" == \#* ]]; then
+            continue
+          fi
+          read -r SRC_IMAGE CUSTOM_TARGET <<< "${LINE}"
+          FIRST_PART="${SRC_IMAGE%%/*}"
+          if [[ "${SRC_IMAGE}" != *"/"* ]]; then
+            FULL_SRC="docker.io/library/${SRC_IMAGE}"
+          elif [[ "${FIRST_PART}" != *"."* && "${FIRST_PART}" != *"localhost"* ]]; then
+            FULL_SRC="docker.io/${SRC_IMAGE}"
+          else
+            FULL_SRC="${SRC_IMAGE}"
+          fi
+          if [[ -n "${CUSTOM_TARGET}" ]]; then
+            TARGET_IMAGE_NAME="${CUSTOM_TARGET}"
+          else
+            TARGET_IMAGE_NAME="${FULL_SRC##*/}"
+          fi
+          DEST_URL="${TARGET_REGISTRY}/${TARGET_NAMESPACE}/${TARGET_IMAGE_NAME}"
+          skopeo copy --all "docker://${FULL_SRC}" "docker://${DEST_URL}"
+        done < "${FILE_PATH}"
+
+    - name: 'Delete releases and workflows runs'
+      if: always()
+      uses: ophub/delete-releases-workflows@main
+      with:
+        delete_releases: false
+        delete_workflows: true
+        workflows_keep_day: 2
+        gh_token: ${{ secrets.GITHUB_TOKEN }}
