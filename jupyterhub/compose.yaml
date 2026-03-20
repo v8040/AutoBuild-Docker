@@ -1,0 +1,11 @@
+services:
+  jupyterhub:
+    container_name: jupyterhub
+    image: v8040/jupyterhub:latest
+    ports:
+      - '8000:8000'
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config:/srv/jupyterhub
