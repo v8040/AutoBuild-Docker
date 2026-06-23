@@ -3,7 +3,7 @@ services:
     container_name: jupyterlab
     image: v8040/jupyterlab:latest
     ports:
-      - '8888:8888'
+      - "8888:8888"
     environment:
       - TZ=Asia/Shanghai
       - NOTEBOOK_ARGS="--ServerApp.token=''"

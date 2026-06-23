@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 sharelatex/sharelatex:latest
+FROM sharelatex/sharelatex:latest
 
 USER root
 
@@ -10,7 +10,10 @@ RUN apt-get update -qq && \
     apt-get autoremove --purge -qqy && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN tlmgr option repository https://mirror.ctan.org/systems/texlive/tlnet && \
+RUN wget -q https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh && \
+    sh update-tlmgr-latest.sh -- --upgrade && \
+    rm update-tlmgr-latest.sh && \
+    tlmgr option repository https://mirror.ctan.org/systems/texlive/tlnet && \
     tlmgr update -q --self --all --reinstall-forcibly-removed && \
     tlmgr install -q scheme-full && \
     tlmgr path add && \

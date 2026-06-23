@@ -3,7 +3,7 @@ services:
     container_name: jupyterhub
     image: v8040/jupyterhub:latest
     ports:
-      - '8000:8000'
+      - "8000:8000"
     environment:
       - TZ=Asia/Shanghai
     volumes:

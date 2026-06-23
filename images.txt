@@ -1,4 +1,6 @@
+ghcr.io/v8040/derper:latest
 ghcr.io/v8040/jupyterhub:latest
 ghcr.io/v8040/jupyterlab:latest
+ghcr.io/v8040/sharelatex:latest
 ghcr.io/v8040/smartdns:latest
 ghcr.io/sagernet/sing-box:latest

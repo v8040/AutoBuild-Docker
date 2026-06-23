@@ -4,10 +4,8 @@ USER root
 
 RUN apt-get update -qq && \
     apt-get install -qqy --no-install-recommends \
-    build-essential \
     fonts-dejavu \
     fonts-noto-cjk \
-    gfortran \
     htop \
     zsh && \
     apt-get autoremove --purge -qqy && \
@@ -32,13 +30,13 @@ RUN mamba update -aqy && \
     'jupytext' \
     'nb_conda_kernels' \
     'nbdime' \
-    'pipx' \
     'python-lsp-server' \
     'r-formatR' \
     'r-irkernel' \
     'r-languageserver' \
     'r-styler' \
-    'rpy2' && \
+    'rpy2' \
+    'uv' && \
     mamba clean -afqy && \
     find $(python3 -c "import os, jupyterlab_language_pack_zh_CN as p; print(os.path.dirname(p.__file__))") \
     -name '*.json' -exec sed -i \

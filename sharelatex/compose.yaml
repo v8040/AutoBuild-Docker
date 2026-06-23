@@ -3,7 +3,7 @@ services:
     container_name: sharelatex_overleaf
     image: v8040/sharelatex:latest
     ports:
-      - '80:80'
+      - "80:80"
     environment:
       - TZ=Asia/Shanghai
       - OVERLEAF_MONGO_URL=mongodb://mongo_overleaf/sharelatex?replicaSet=overleaf
@@ -24,7 +24,7 @@ services:
       mongo_overleaf:
         condition: service_healthy
       valkey_overleaf:
-         condition: service_started
+        condition: service_started
 
   mongo_overleaf:
     container_name: mongo_overleaf
@@ -34,7 +34,7 @@ services:
       - MONGO_INITDB_DATABASE=sharelatex
     volumes:
       - ./mongo:/data/db
-    command: ['mongod', '--bind_ip_all', '--replSet', 'overleaf']
+    command: ["mongod", "--bind_ip_all", "--replSet", "overleaf"]
     healthcheck:
       test: echo 'try { rs.status() } catch (e) { rs.initiate({_id:"overleaf", members:[{_id:0, host:"mongo_overleaf:27017"}]}) }' | mongosh --quiet
       interval: 10s
