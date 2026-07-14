@@ -1,0 +1,131 @@
+name: "Docker Build"
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Select the project"
+        required: false
+        type: choice
+        options:
+          - all
+          - derper
+          - jupyterhub
+          - jupyterlab
+          - sharelatex
+        default: all
+
+jobs:
+  Prepare:
+    name: "Prepare matrix"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: "Checkout"
+        if: inputs.project == 'all'
+        uses: actions/checkout@main
+
+      - name: "Init"
+        run: |
+          sudo -E timedatectl set-timezone 'Asia/Shanghai'
+          sudo -E timedatectl set-ntp true
+          timedatectl status
+
+      - name: "Matrix"
+        id: matrix
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          if [ "${PROJECT}" = 'all' ]; then
+            PROJECTS=$(find . -maxdepth 2 -name Dockerfile -not -path './.git/*' | sed 's|./||;s|/Dockerfile||' | jq -R -s -c '{project: split("\n")[:-1]}')
+          else
+            PROJECTS=$(jq -cn --arg p "${PROJECT}" '{project: [$p]}')
+          fi
+          echo "matrix=${PROJECTS}" >> "${GITHUB_OUTPUT}"
+
+  Build:
+    name: "Build for ${{ matrix.project }}"
+    if: github.event.repository.owner.id == github.event.sender.id
+    needs: Prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.Prepare.outputs.matrix) }}
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@main
+
+      - name: "Init"
+        run: |
+          sudo -E timedatectl set-timezone 'Asia/Shanghai'
+          sudo -E timedatectl set-ntp true
+          timedatectl status
+
+      - name: "QEMU"
+        uses: docker/setup-qemu-action@master
+
+      - name: "Buildx"
+        uses: docker/setup-buildx-action@master
+
+      - name: "Docker Login"
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: "GHCR Login"
+        uses: docker/login-action@master
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Fetch Resources"
+        if: matrix.project != 'jupyterhub' && matrix.project != 'derper'
+        working-directory: ${{ matrix.project }}
+        env:
+          PROJECT: ${{ matrix.project }}
+          URL_JOVYAN: ${{ secrets.URL_JOVYAN }}
+          URL_FONTS: ${{ secrets.URL_FONTS }}
+        run: |
+          case "${PROJECT}" in
+            'jupyterlab')
+              git clone -q --depth=1 https://github.com/ohmybash/oh-my-bash.git opt/oh-my-bash
+              git clone -q --depth=1 https://github.com/ohmyzsh/ohmyzsh.git opt/oh-my-zsh
+              git clone -q --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git opt/oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+              git clone -q --depth=1 https://github.com/zsh-users/zsh-autosuggestions.git opt/oh-my-zsh/custom/plugins/zsh-autosuggestions
+              curl -fsSL "${URL_JOVYAN}" | tar -xJf - -C . ;;
+            'sharelatex')
+              curl -fsSL "${URL_FONTS}" | tar -xJf - -C . ;;
+          esac
+
+      - name: "Metadata"
+        uses: docker/metadata-action@master
+        with:
+          images: |
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.project }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.project }}
+          tags: |
+            type=raw,value=latest
+
+      - name: "Build [${{ matrix.project }}]"
+        uses: docker/build-push-action@master
+        with:
+          context: ${{ matrix.project }}
+          file: ${{ matrix.project }}/Dockerfile
+          push: true
+          platforms: ${{ matrix.project == 'sharelatex' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ${{ env.DOCKER_METADATA_OUTPUT_TAGS }}
+          labels: ${{ env.DOCKER_METADATA_OUTPUT_LABELS }}
+
+      - name: "Cleanup"
+        if: always()
+        uses: ophub/delete-releases-workflows@main
+        with:
+          delete_releases: false
+          delete_workflows: true
+          workflows_keep_day: 2
+          gh_token: ${{ secrets.GITHUB_TOKEN }}

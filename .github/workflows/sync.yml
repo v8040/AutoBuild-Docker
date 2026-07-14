@@ -1,0 +1,176 @@
+name: "Mirror to TCR"
+
+on:
+  workflow_dispatch:
+
+env:
+  IMAGE_LIST_FILE: "images.txt"
+  TCR_REGISTRY: "ccr.ccs.tencentyun.com"
+
+jobs:
+  Sync:
+    name: "Sync"
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@main
+
+      - name: "Init"
+        run: |
+          sudo -E timedatectl set-timezone 'Asia/Shanghai'
+          sudo -E timedatectl set-ntp true
+          timedatectl status
+
+      - name: "Docker Login"
+        uses: docker/login-action@master
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: "GHCR Login"
+        uses: docker/login-action@master
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "TCR Login"
+        uses: docker/login-action@master
+        with:
+          registry: ${{ env.TCR_REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_TOKEN }}
+
+      - name: "Set Auth"
+        run: |
+          AUTH_FILE="${DOCKER_CONFIG:-$HOME}/config.json"
+          [ -f "${AUTH_FILE}" ] || AUTH_FILE="${HOME}/.docker/config.json"
+          echo "AUTH_FILE=${AUTH_FILE}" >> "${GITHUB_ENV}"
+
+      - name: "Resolve Images"
+        env:
+          IMAGE_LIST_FILE: ${{ env.IMAGE_LIST_FILE }}
+          IMAGE_LIST_URL: ${{ secrets.IMAGE_LIST_URL }}
+        run: |
+          TOTAL=0; DUPLICATES=0; REDIRECTS=0
+          touch "${IMAGE_LIST_FILE}"
+          if [ -s "${IMAGE_LIST_FILE}" ]; then printf '%s\n' >> "${IMAGE_LIST_FILE}"; fi
+          if [ -n "${IMAGE_LIST_URL}" ]; then
+            REMOTE_COUNT=0
+            if curl -sSfL "${IMAGE_LIST_URL}" -o remote_images.txt; then
+              REMOTE_COUNT=$(grep -cv '^[[:space:]]*\(#\|$\)' remote_images.txt || true)
+              cat remote_images.txt >> "${IMAGE_LIST_FILE}"
+              echo "Loaded ${REMOTE_COUNT} image(s) from remote list"
+            else
+              echo '::warning::Remote image list unavailable'
+            fi
+          fi
+          CLEAN_FILE='staging_images.txt'
+          touch "${CLEAN_FILE}"
+          declare -A VISITED_TARGETS
+          while read -r LINE || [[ -n "${LINE}" ]]; do
+            LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+            LINE="${LINE%"${LINE##*[![:space:]]}"}"
+            if [[ -z "${LINE}" ]] || [[ "${LINE}" == \#* ]]; then continue; fi
+            TOTAL=$((TOTAL + 1))
+            read -r SRC_IMAGE CUSTOM_TARGET <<< "${LINE}"
+            FIRST_PART="${SRC_IMAGE%%/*}"
+            if [[ "${SRC_IMAGE}" != *'/'* ]]; then
+              FULL_SRC="docker.io/library/${SRC_IMAGE}"
+            elif [[ "${FIRST_PART}" != *'.'* && "${FIRST_PART}" != *':'* && "${FIRST_PART}" != 'localhost' ]]; then
+              FULL_SRC="docker.io/${SRC_IMAGE}"
+            else
+              FULL_SRC="${SRC_IMAGE}"
+            fi
+            if [[ -n "${CUSTOM_TARGET}" ]]; then
+              TARGET_NAME="${CUSTOM_TARGET}"
+            else
+              TARGET_NAME="${FULL_SRC##*/}"
+            fi
+            if [[ -n "${VISITED_TARGETS[${TARGET_NAME}]}" ]]; then
+              DUPLICATES=$((DUPLICATES + 1))
+              echo "Skipping duplicate: ${TARGET_NAME} (from ${SRC_IMAGE})"
+              continue
+            fi
+            VISITED_TARGETS["${TARGET_NAME}"]=1
+            RESOLVED_SRC="${FULL_SRC}"
+            if [[ "${FULL_SRC}" == docker.io/* ]]; then
+              REL_PATH="${FULL_SRC#docker.io/}"
+              if [[ "${REL_PATH}" != library/* ]]; then
+                GHCR_CANDIDATE="ghcr.io/${REL_PATH}"
+                if skopeo inspect --authfile "${AUTH_FILE}" --no-tags "docker://${GHCR_CANDIDATE}" &>/dev/null; then
+                  RESOLVED_SRC="${GHCR_CANDIDATE}"
+                  REDIRECTS=$((REDIRECTS + 1))
+                  echo "Redirecting: ${FULL_SRC} -> ${GHCR_CANDIDATE}"
+                fi
+              fi
+            fi
+            printf '%s\n' "${RESOLVED_SRC} ${TARGET_NAME}" >> "${CLEAN_FILE}"
+          done < "${IMAGE_LIST_FILE}"
+          mv "${CLEAN_FILE}" "${IMAGE_LIST_FILE}"
+          FINAL=$(grep -cv '^[[:space:]]*$' "${IMAGE_LIST_FILE}" || true)
+          echo ''
+          echo '=== Prepare Summary ==='
+          echo "Input lines:      ${TOTAL}"
+          echo "Duplicates skipped: ${DUPLICATES}"
+          echo "GHCR redirected:    ${REDIRECTS}"
+          echo "Final images:       ${FINAL}"
+          echo '=== Image list ==='
+          cat "${IMAGE_LIST_FILE}"
+
+      - name: "Sync"
+        env:
+          FILE_PATH: ${{ env.IMAGE_LIST_FILE }}
+          TARGET_REGISTRY: ${{ env.TCR_REGISTRY }}
+          TARGET_NAMESPACE: ${{ secrets.TCR_NAMESPACE }}
+        run: |
+          if [ ! -f "${FILE_PATH}" ]; then
+            echo "::error::Image list file '${FILE_PATH}' not found!"
+            exit 1
+          fi
+          if [ -z "${TARGET_NAMESPACE}" ]; then
+            echo '::error::Secret TCR_NAMESPACE is empty or not configured!'
+            exit 1
+          fi
+          TOTAL_IMAGES=$(grep -cv '^[[:space:]]*$' "${FILE_PATH}" || true)
+          CURRENT=0
+          PASSED=0
+          FAILED=0
+          START_TIME=$(date +%s)
+          echo "Starting sync of ${TOTAL_IMAGES} image(s) to ${TARGET_REGISTRY}/${TARGET_NAMESPACE}"
+          while read -r FULL_SRC TARGET_NAME || [[ -n "${FULL_SRC}" ]]; do
+            if [[ -z "${FULL_SRC}" ]]; then continue; fi
+            CURRENT=$((CURRENT + 1))
+            DEST_URL="${TARGET_REGISTRY}/${TARGET_NAMESPACE}/${TARGET_NAME}"
+            echo "[${CURRENT}/${TOTAL_IMAGES}] Syncing: ${FULL_SRC} -> ${DEST_URL}"
+            if skopeo copy --quiet --all --authfile "${AUTH_FILE}" "docker://${FULL_SRC}" "docker://${DEST_URL}"; then
+              PASSED=$((PASSED + 1))
+              echo '  OK'
+            else
+              FAILED=$((FAILED + 1))
+              echo "::error::Failed to sync ${FULL_SRC}"
+            fi
+          done < "${FILE_PATH}"
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          echo ''
+          echo '=== Sync Summary ==='
+          echo "Total:    ${TOTAL_IMAGES}"
+          echo "Synced:   ${PASSED}"
+          echo "Failed:   ${FAILED}"
+          printf 'Duration: %dm%ds\n' $((DURATION / 60)) $((DURATION % 60))
+          if [ "${FAILED}" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: "Cleanup"
+        if: always()
+        uses: ophub/delete-releases-workflows@main
+        with:
+          delete_releases: false
+          delete_workflows: true
+          workflows_keep_day: 2
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
