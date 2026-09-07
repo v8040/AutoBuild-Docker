@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - all
+          - bentopdf
           - derper
           - jupyterhub
           - jupyterlab
@@ -84,7 +85,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Fetch Resources"
-        if: matrix.project != 'jupyterhub' && matrix.project != 'derper'
+        if: matrix.project != 'jupyterhub' && matrix.project != 'derper' && matrix.project != 'bentopdf'
         working-directory: ${{ matrix.project }}
         env:
           PROJECT: ${{ matrix.project }}
@@ -120,6 +121,12 @@ jobs:
           platforms: ${{ matrix.project == 'sharelatex' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           tags: ${{ env.DOCKER_METADATA_OUTPUT_TAGS }}
           labels: ${{ env.DOCKER_METADATA_OUTPUT_LABELS }}
+
+      - name: "Verify"
+        if: matrix.project == 'bentopdf'
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/bentopdf:latest
+        run: bash bentopdf/verify.sh
 
       - name: "Cleanup"
         if: always()

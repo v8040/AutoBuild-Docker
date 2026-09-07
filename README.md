@@ -10,6 +10,7 @@ Docker 镜像构建仓库 通过 GitHub Actions 自动化构建, 推送到 Docke
 | `jupyterhub/` | JupyterHub + Dockerspawner + Idle Culler + Native Authenticator |
 | `jupyterlab/` | JupyterLab + 中文语言包 + R Kernel + code-server + Zsh |
 | `sharelatex/` | Overleaf + 全套 TeX Live + 中文字体 |
+| `bentopdf/` | BentoPDF + WASM/OCR/字体全本地化 |
 
 ## 构建
 
