@@ -2,6 +2,15 @@ name: "Mirror to TCR"
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Select the runner"
+        required: false
+        type: choice
+        options:
+          - self-hosted
+          - github-hosted
+        default: self-hosted
 
 env:
   IMAGE_LIST_FILE: "images.txt"
@@ -11,13 +20,14 @@ jobs:
   Sync:
     name: "Sync"
     if: github.event.repository.owner.id == github.event.sender.id
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner == 'self-hosted' && '["self-hosted","linux","x64","tcr-sync"]' || '["ubuntu-latest"]') }}
 
     steps:
       - name: "Checkout"
         uses: actions/checkout@main
 
       - name: "Init"
+        if: runner.environment == 'github-hosted'
         run: |
           sudo -E timedatectl set-timezone 'Asia/Shanghai'
           sudo -E timedatectl set-ntp true
