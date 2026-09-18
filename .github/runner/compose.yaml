@@ -1,0 +1,11 @@
+services:
+  gh-runner:
+    container_name: gh-runner
+    build: .
+    image: gh-runner:latest
+    network_mode: host
+    env_file:
+      - runner.env
+    volumes:
+      - ./work:/home/runner/_work
+    restart: always
