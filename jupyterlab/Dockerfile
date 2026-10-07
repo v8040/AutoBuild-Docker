@@ -11,6 +11,7 @@ RUN apt-get update -qq && \
     jq \
     ripgrep \
     rsync \
+    texlive-full \
     zsh \
     zstd && \
     ln -sf /usr/bin/fdfind /usr/local/bin/fd && \
@@ -29,6 +30,7 @@ RUN printf 'python %s\n' "$(python --version | cut -d' ' -f2)" >> "${CONDA_DIR}/
     'jupyter-resource-usage' \
     'jupyter-vscode-proxy' \
     'jupyterlab-git' \
+    'jupyterlab-latex' \
     'jupyterlab-language-pack-zh-cn' \
     'jupyterlab-lsp' \
     'jupyterlab-variableinspector' \
@@ -45,18 +47,23 @@ RUN printf 'python %s\n' "$(python --version | cut -d' ' -f2)" >> "${CONDA_DIR}/
     'rpy2' \
     'uv' && \
     mamba clean -afqy && \
-    find $(python3 -c 'import os, jupyterlab_language_pack_zh_CN as p; print(os.path.dirname(p.__file__))') \
-    -name '*.json' -exec sh -c ' \
-    for FILE; do \
-    jq "if has(\"Notebook\") then .Notebook[0] = \"Notebook\" else . end | if has(\"Console\") then .Console[0] = \"Console\" else . end | if has(\"Other\") then .Other[0] = \"Other\" else . end" "${FILE}" > "${FILE}.tmp" && mv "${FILE}.tmp" "${FILE}"; \
-    done \
-    ' _ {} + && \
     find -L "${CONDA_DIR}" -type f \
     \( -name '*.a' -o -name '*.pyc' -o -name '*.js.map' \) \
     -delete && \
     mkdir -p "${CONDA_DIR}/envs" && \
     fix-permissions "${CONDA_DIR}" && \
     rm -rf "/home/${NB_USER}"/.[!.]*
+
+RUN find $(python3 -c 'import os, jupyterlab_language_pack_zh_CN as p; print(os.path.dirname(p.__file__))') \
+    -name '*.json' -exec sh -c ' \
+    for FILE; do \
+    jq "if has(\"Notebook\") then .Notebook[0] = \"Notebook\" else . end | if has(\"Console\") then .Console[0] = \"Console\" else . end | if has(\"Other\") then .Other[0] = \"Other\" else . end" "${FILE}" > "${FILE}.tmp" && mv "${FILE}.tmp" "${FILE}"; \
+    done \
+    ' _ {} + && \
+    mkdir -p "${CONDA_DIR}/etc/jupyter" && \
+    printf '%s\n' \
+    'c.LatexConfig.latex_command = "lualatex"' \
+    >> "${CONDA_DIR}/etc/jupyter/jupyter_server_config.py"
 
 ENV CODE_WORKINGDIR="/home/${NB_USER}/work" \
     CODE_EXTENSIONSDIR="/home/${NB_USER}/work/.code-server/extensions"
