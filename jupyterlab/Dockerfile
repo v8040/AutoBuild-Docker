@@ -19,7 +19,8 @@ RUN apt-get update -qq && \
 
 USER ${NB_UID}
 
-RUN mamba update -aqy && \
+RUN printf 'python %s\n' "$(python --version | cut -d' ' -f2)" >> "${CONDA_DIR}/conda-meta/pinned" && \
+    mamba update -aqy && \
     mamba install -qy \
     'bash-language-server' \
     'code-server' \

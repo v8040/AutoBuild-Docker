@@ -9,6 +9,10 @@ Docker image building repo. Each subdirectory (`derper`, `jupyterhub`, `jupyterl
 - Only the repo owner can trigger builds (enforced by owner-only guard in the workflow)
 - Build workflow selects a single project or `all` from the dropdown (bentopdf, derper, jupyterhub, jupyterlab, sharelatex, all). Default is `all`
 
+## Known workarounds
+
+- **jupyterlab python pin**: `jupyterlab/Dockerfile` pins python to the base image's exact version before `mamba update -aqy`. mamba `update --all` marks the whole env for reinstall when python is upgraded, docker-stacks base images ship without `/opt/conda/pkgs` (`clean --all -f`), and micromamba (2.8.1 and 2.9.0 affected) does not re-fetch packages for reinstall actions, so relinking fails with `Cannot find a valid extracted directory cache`. Remove the pin once mamba-org/mamba fixes reinstall on cacheless environments or docker-stacks changes its cache policy
+
 ## Platform support
 
 - `sharelatex` is **linux/amd64 only** (TeX Live `scheme-full` doesn't install cleanly on arm64)
