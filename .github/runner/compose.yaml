@@ -1,0 +1,10 @@
+services:
+  gh-runner:
+    container_name: gh-runner
+    hostname: gh-runner
+    build: .
+    image: gh-runner:latest
+    network_mode: host
+    env_file:
+      - runner.env
+    restart: always
