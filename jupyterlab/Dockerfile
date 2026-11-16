@@ -11,6 +11,7 @@ RUN apt-get update -qq && \
     jq \
     ripgrep \
     rsync \
+    texlive-full \
     zsh \
     zstd && \
     ln -sf /usr/bin/fdfind /usr/local/bin/fd && \
@@ -19,7 +20,9 @@ RUN apt-get update -qq && \
 
 USER ${NB_UID}
 
-RUN mamba update -aqy && \
+RUN PY_VER="$("${CONDA_DIR:?}/bin/python" -c 'import platform; print(platform.python_version())')" && \
+    printf 'python==%s\n' "${PY_VER}" > "${CONDA_DIR}/conda-meta/pinned" && \
+    mamba update -aqy && \
     mamba install -qy \
     'bash-language-server' \
     'code-server' \
@@ -28,6 +31,7 @@ RUN mamba update -aqy && \
     'jupyter-resource-usage' \
     'jupyter-vscode-proxy' \
     'jupyterlab-git' \
+    'jupyterlab-latex' \
     'jupyterlab-language-pack-zh-cn' \
     'jupyterlab-lsp' \
     'jupyterlab-variableinspector' \
@@ -44,18 +48,26 @@ RUN mamba update -aqy && \
     'rpy2' \
     'uv' && \
     mamba clean -afqy && \
-    find $(python3 -c 'import os, jupyterlab_language_pack_zh_CN as p; print(os.path.dirname(p.__file__))') \
-    -name '*.json' -exec sh -c ' \
-    for FILE; do \
-    jq "if has(\"Notebook\") then .Notebook[0] = \"Notebook\" else . end | if has(\"Console\") then .Console[0] = \"Console\" else . end | if has(\"Other\") then .Other[0] = \"Other\" else . end" "${FILE}" > "${FILE}.tmp" && mv "${FILE}.tmp" "${FILE}"; \
-    done \
-    ' _ {} + && \
-    find -L "${CONDA_DIR}" -type f \
+    printf '%s\n' \
+    'import json, pathlib, jupyterlab_language_pack_zh_CN as pkg' \
+    'KEYS = ("Notebook", "Console", "Other")' \
+    'for path in pathlib.Path(pkg.__path__[0]).rglob("*.json"):' \
+    '    data = json.loads(path.read_text(encoding="utf-8"))' \
+    '    if not isinstance(data, dict): continue' \
+    '    for key in KEYS:' \
+    '        value = data.get(key)' \
+    '        if isinstance(value, list) and (not value or value[0] != key): data[key] = [key, *value[1:]]' \
+    '    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")' \
+    | "${CONDA_DIR}/bin/python" - && \
+    find "${CONDA_DIR}" -type f,l \
     \( -name '*.a' -o -name '*.pyc' -o -name '*.js.map' \) \
     -delete && \
-    mkdir -p "${CONDA_DIR}/envs" && \
+    mkdir -p "${CONDA_DIR}/envs" "${CONDA_DIR}/etc/jupyter" && \
+    printf '%s\n' \
+    'c.LatexConfig.latex_command = "lualatex"' \
+    >> "${CONDA_DIR}/etc/jupyter/jupyter_server_config.py" && \
     fix-permissions "${CONDA_DIR}" && \
-    rm -rf "/home/${NB_USER}"/.[!.]*
+    find "/home/${NB_USER}" -mindepth 1 -maxdepth 1 -name '.*' -exec rm -rf -- {} +
 
 ENV CODE_WORKINGDIR="/home/${NB_USER}/work" \
     CODE_EXTENSIONSDIR="/home/${NB_USER}/work/.code-server/extensions"
